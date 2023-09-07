@@ -6,10 +6,7 @@ import com.rpl.rama.Path;
 import com.rpl.rama.cluster.ClusterManagerBase;
 import org.example.data.*;
 
-import java.util.List;
-import java.util.Map;
-import java.util.Random;
-import java.util.UUID;
+import java.util.*;
 
 public class EVClient {
 
@@ -21,6 +18,7 @@ public class EVClient {
 
   private final PState vehicles;
   private final PState users;
+  private final PState emailToUserId;
   private final PState userRideHistory;
   private final PState vehicleRide;
 
@@ -35,6 +33,7 @@ public class EVClient {
 
     vehicles = cluster.clusterPState(moduleName, "$$vehicles");
     users = cluster.clusterPState(moduleName, "$$users");
+    emailToUserId = cluster.clusterPState(moduleName, "$$emailToUserId");
     userRideHistory = cluster.clusterPState(moduleName, "$$userRideHistory");
     vehicleRide = cluster.clusterPState(moduleName, "$$vehicleRide");
   }
@@ -78,13 +77,26 @@ public class EVClient {
   public Boolean createAccount(String email) {
     var creationUUID = UUID.randomUUID().toString();
     userRegistrationDepot.append(new UserRegistration(creationUUID, email));
-    // query a pstate to determine if this invocation caused the user to be created
-    User user = users.selectOne(Path.mapVals().filterEqual(creationUUID));
-    return user.creationUUID.equals(creationUUID);
+    // select the user with a matching email and check if the creationUUID matches
+    var userId = emailToUserId.selectOne(Path.key(email));
+    var matchingCreationUUID = users.selectOne(Path.key(userId, "creationUUID"));
+    return creationUUID.equals(matchingCreationUUID);
   }
 
   public List<CompletedRide> getUserRideHistory(String userId) {
-    return userRideHistory.select(Path.key(userId));
+    var history = userRideHistory.select(Path.key(userId));
+    return null;
+//    return history
+//        .stream().map((Map m) -> Map.copyOf<String, Object>(m))
+//        .map((Map m) -> new CompletedRide(
+//        (String) m.get("userId"),
+//        (String) m.get("rideId"),
+//        (String) m.get("vehicleId"),
+//        (LocalDateTime) LocalDateTime.ofEpochSecond((Long) m.get("beginTimestamp"), 0 , ZoneOffset.UTC),
+//        (LocalDateTime) LocalDateTime.ofEpochSecond((Long) m.get("endTimestamp"), 0 , ZoneOffset.UTC),
+//        (LatLng) m.get("beginLocation"),
+//        (LatLng) m.get("endLocation")
+//    )).collect(Collectors.toList());
   }
 
   // **********

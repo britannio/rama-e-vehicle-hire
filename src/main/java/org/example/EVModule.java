@@ -6,6 +6,8 @@ import com.rpl.rama.module.StreamTopology;
 import com.rpl.rama.ops.Ops;
 import org.example.data.LatLng;
 
+import java.util.UUID;
+
 import static com.rpl.rama.helpers.TopologyUtils.extractJavaFields;
 
 public class EVModule implements RamaModule {
@@ -49,6 +51,7 @@ public class EVModule implements RamaModule {
     users.pstate("$$userRideHistory", PState.mapSchema(
         String.class, // userId
         PState.listSchema(PState.fixedKeysSchema(
+            "userId", String.class,
             "rideId", String.class,
             "vehicleId", String.class,
             "startLocation", LatLng.class,
@@ -58,6 +61,34 @@ public class EVModule implements RamaModule {
             "route", PState.listSchema(LatLng.class)
         ))
     ));
+    users.pstate("$$emailToUserId", PState.mapSchema(
+        String.class, // email
+        String.class // userId
+    ));
+
+    users.source("*userRegistration").out("*out")
+        .macro(extractJavaFields("*out", "*email", "*creationUUID"))
+        // Ensure that emailToUserId has no entry for this email
+        // Generate a userId and set the emailToUserId entry
+        // Jump to the partition via hashed userId
+        // Create the user
+        .localSelect("$$emailToUserId", Path.key("*email")).out("*userId")
+        .ifTrue(new Expr(Ops.IS_NULL, "*userId"),
+            Block
+                // Generate a userId
+                .each(UUID.randomUUID()::toString).out("*userId")
+                // Set the emailToUserId entry
+                .localTransform("$$emailToUserId", Path.key("*email").termVal("*userId"))
+                // TODO will the following code run before the append is acknowledged as required?
+                .hashPartition("*userId")
+                .localTransform("$$users",
+                    Path.key("*userId")
+                        .multiPath(
+                            Path.key("email").termVal("*email"),
+                            Path.key("creationUUID").termVal("*creationUUID")
+                        )
+                )
+        );
 
   }
 

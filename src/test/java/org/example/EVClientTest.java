@@ -52,7 +52,35 @@ public class EVClientTest extends TestCase {
     }
   }
 
-  public void testCreateAccount() {
+  public void testCreateAccount() throws Exception {
+    try (InProcessCluster ipc = InProcessCluster.create()) {
+      var client = launchModule(ipc);
+      var users = ipc.clusterPState(moduleName, "$$users");
+      var emailToUserId = ipc.clusterPState(moduleName, "$$emailToUserId");
+
+      // Creating an account should put it in the $$users PState
+      var validEmail = "test@example.com";
+      assertNull(emailToUserId.selectOne(Path.key(validEmail)));
+      var created = client.createAccount(validEmail);
+      assertTrue(created);
+      var userId = emailToUserId.selectOne(Path.key(validEmail));
+      assertNotNull(userId);
+      assertNotNull(users.selectOne(Path.key(userId)));
+
+    }
+  }
+
+  public void testCreateAccountInvalidEmail() throws Exception {
+    try (InProcessCluster ipc = InProcessCluster.create()) {
+      var client = launchModule(ipc);
+      var emailToUserId = ipc.clusterPState(moduleName, "$$emailToUserId");
+
+      // Creating an account with an invalid email should fail
+      var invalidEmail = "test";
+      var created = client.createAccount(invalidEmail);
+      assertFalse(created);
+      assertNull(emailToUserId.select(Path.key(invalidEmail)));
+    }
   }
 
   public void testGetUserRideHistory() {

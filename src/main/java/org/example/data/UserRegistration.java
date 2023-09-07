@@ -1,13 +1,9 @@
 package org.example.data;
 
 import com.rpl.rama.RamaSerializable;
+import lombok.Data;
 
-public class UserRegistration implements RamaSerializable {
-  final String creationUUID;
-  final String email;
-
-  public UserRegistration(String creationUUID, String email) {
-    this.creationUUID = creationUUID;
-    this.email = email;
-  }
+public @Data class UserRegistration implements RamaSerializable {
+  public final String creationUUID;
+  public final String email;
 }
