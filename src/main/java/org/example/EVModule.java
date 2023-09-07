@@ -110,6 +110,18 @@ public class EVModule implements RamaModule {
                     Path.key("creationUUID").termVal("*creationUUID")
                 )
         );
+
+    vehicles.source("*vehicleUpdate").out("*out")
+        .macro(extractJavaFields("*out", "*vehicleId", "*battery", "*location"))
+        .localTransform("$$vehicles",
+            Path.key("*vehicleId")
+                // Only update a vehicle if it exists
+                .filterPred(Ops.IS_NOT_NULL)
+                .multiPath(
+                    Path.key("battery").termVal("*battery"),
+                    Path.key("location").termVal("*location")
+                )
+        );
   }
 
   @Override
