@@ -74,7 +74,15 @@ public class EVClient {
   // **********
   // Users
   // **********
+
+  private Boolean isValidEmail(String email) {
+    return email.matches("^[^@]+@[^@]+$");
+  }
+
   public Boolean createAccount(String email) {
+    if (!isValidEmail(email)) {
+      return false;
+    }
     var creationUUID = UUID.randomUUID().toString();
     userRegistrationDepot.append(new UserRegistration(creationUUID, email));
     // select the user with a matching email and check if the creationUUID matches

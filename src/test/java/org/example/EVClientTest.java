@@ -79,7 +79,7 @@ public class EVClientTest extends TestCase {
       var invalidEmail = "test";
       var created = client.createAccount(invalidEmail);
       assertFalse(created);
-      assertNull(emailToUserId.select(Path.key(invalidEmail)));
+      assertNull(emailToUserId.selectOne(Path.key(invalidEmail)));
     }
   }
 
