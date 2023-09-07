@@ -13,7 +13,7 @@ public class EVClientTest extends TestCase {
     try (InProcessCluster ipc = InProcessCluster.create()) {
       var module = new EVModule();
       var moduleName = module.getClass().getName();
-      ipc.launchModule(module, new LaunchConfig(1,1));
+      ipc.launchModule(module, new LaunchConfig(1, 1));
       EVClient client = new EVClient(ipc);
 
       var vehicles = ipc.clusterPState(moduleName, "$$vehicles");

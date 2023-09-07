@@ -1,6 +1,8 @@
 package org.example.data;
 
-public class LatLng {
+import com.rpl.rama.RamaSerializable;
+
+public class LatLng implements RamaSerializable {
   public final Long latitude;
   public final Long longitude;
 

@@ -3,11 +3,13 @@ package org.example.data;
 import com.rpl.rama.RamaSerializable;
 
 public class Vehicle implements RamaSerializable {
-  public final String id;
+  public final String vehicleId;
   public final LatLng location;
+  public final String creationUUID;
 
-  public Vehicle(String id, LatLng location) {
-    this.id = id;
+  public Vehicle(String vehicleId, LatLng location, String creationUUID) {
+    this.vehicleId = vehicleId;
     this.location = location;
+    this.creationUUID = creationUUID;
   }
 }

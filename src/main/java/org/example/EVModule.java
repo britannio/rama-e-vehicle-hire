@@ -1,12 +1,12 @@
 package org.example;
 
-import com.rpl.rama.Depot;
-import com.rpl.rama.PState;
-import com.rpl.rama.RamaModule;
-import com.rpl.rama.SubindexOptions;
+import com.rpl.rama.*;
 import com.rpl.rama.helpers.TopologyUtils;
 import com.rpl.rama.module.StreamTopology;
+import com.rpl.rama.ops.Ops;
 import org.example.data.LatLng;
+
+import static com.rpl.rama.helpers.TopologyUtils.extractJavaFields;
 
 public class EVModule implements RamaModule {
 
@@ -66,6 +66,7 @@ public class EVModule implements RamaModule {
     vehicles.pstate("$$vehicles", PState.mapSchema(
         String.class, // vehicleId
         PState.fixedKeysSchema(
+            "vehicleId", String.class,
             "battery", Integer.class,
             "location", String.class,
             "creationUUID", String.class
@@ -93,6 +94,22 @@ public class EVModule implements RamaModule {
             )
         )
     );
+
+    // Verify that a vehicle with this id does not exist
+    // Add the vehicle to the vehicles pstate (battery = 0, location = (0,0)
+    vehicles.source("*vehicleCreate").out("*out")
+        .macro(extractJavaFields("*out", "*creationUUID", "*vehicleId"))
+        .localTransform("$$vehicles",
+            Path.key("*vehicleId")
+                // Only performs the write if the current data is null
+                .filterPred(Ops.IS_NULL)
+                .multiPath(
+                    Path.key("vehicleId").termVal("*vehicleId"),
+                    Path.key("battery").termVal(0),
+                    Path.key("location").termVal(new LatLng(0L, 0L)),
+                    Path.key("creationUUID").termVal("*creationUUID")
+                )
+        );
   }
 
   @Override

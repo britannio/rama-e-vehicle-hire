@@ -7,6 +7,7 @@ import com.rpl.rama.cluster.ClusterManagerBase;
 import org.example.data.*;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 import java.util.UUID;
 
@@ -56,12 +57,15 @@ public class EVClient {
 
   public String createVehicle() {
     String creationUUID = UUID.randomUUID().toString();
-    String vehicleId = generateVehicleId();
-    vehicleCreateDepot.append(new VehicleCreate(creationUUID, vehicleId));
-    // query a pstate to get the id of the vehicle
-    // TODO which pstate partition will this read from??
-    Vehicle vehicle = vehicles.selectOne(Path.mapVals().filterEqual(creationUUID));
-    return vehicle.id;
+    while (true) {
+      String vehicleId = generateVehicleId();
+      vehicleCreateDepot.append(new VehicleCreate(creationUUID, vehicleId));
+      // TODO which pstate partition will this read from??
+      Map<String, Object> vehicleMap = vehicles.selectOne(Path.key(vehicleId));
+      if (vehicleMap.get("creationUUID").equals(creationUUID)) {
+        return vehicleId;
+      }
+    }
   }
 
   public void updateVehicle(String vehicleId, int battery, LatLng latLng) {
