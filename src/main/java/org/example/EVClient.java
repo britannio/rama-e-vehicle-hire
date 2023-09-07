@@ -7,6 +7,7 @@ import com.rpl.rama.cluster.ClusterManagerBase;
 import org.example.data.*;
 
 import java.util.List;
+import java.util.Random;
 import java.util.UUID;
 
 public class EVClient {
@@ -41,17 +42,30 @@ public class EVClient {
   // Vehicles
   // **********
 
+  private String generateVehicleId() {
+    var vehicleIdLength = 4;
+    var alphanumerics = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    var sb = new StringBuilder();
+    var random = new Random();
+    for (int i = 0; i < vehicleIdLength; i++) {
+      var randomInt = random.nextInt(alphanumerics.length());
+      sb.append(alphanumerics.charAt(randomInt));
+    }
+    return sb.toString();
+  }
 
   public String createVehicle() {
     String creationUUID = UUID.randomUUID().toString();
-    vehicleCreateDepot.append(new VehicleCreate(creationUUID));
+    String vehicleId = generateVehicleId();
+    vehicleCreateDepot.append(new VehicleCreate(creationUUID, vehicleId));
     // query a pstate to get the id of the vehicle
+    // TODO which pstate partition will this read from??
     Vehicle vehicle = vehicles.selectOne(Path.mapVals().filterEqual(creationUUID));
     return vehicle.id;
   }
 
-  public void updateVehicle(int battery, LatLng latLng) {
-    vehicleUpdateDepot.append(new VehicleUpdate(battery, latLng));
+  public void updateVehicle(String vehicleId, int battery, LatLng latLng) {
+    vehicleUpdateDepot.append(new VehicleUpdate(vehicleId, battery, latLng));
   }
 
   // **********

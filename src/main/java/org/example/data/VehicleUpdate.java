@@ -1,10 +1,14 @@
 package org.example.data;
 
-public class VehicleUpdate {
-  final Integer battery;
-  final LatLng location;;
+import com.rpl.rama.RamaSerializable;
 
-  public VehicleUpdate(Integer battery, LatLng location) {
+public class VehicleUpdate implements RamaSerializable {
+  public final String vehicleId;
+  public final Integer battery;
+  public final LatLng location;
+
+  public VehicleUpdate(String vehicleId, Integer battery, LatLng location) {
+    this.vehicleId = vehicleId;
     this.battery = battery;
     this.location = location;
   }
