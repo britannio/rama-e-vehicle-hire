@@ -50,6 +50,8 @@ public class EVClientTest extends TestCase {
       Map<String, Object> vehicleMap = vehicles.selectOne(Path.key(vehicleId));
       assertEquals(battery, vehicleMap.get("battery"));
       assertEquals(location, vehicleMap.get("location"));
+
+      // TODO assert that $$vehicleLocationHistory is updated
     }
   }
 
@@ -104,30 +106,30 @@ public class EVClientTest extends TestCase {
 
       // update the vehicle location and battery
       client.updateVehicle(vehicleId, 100, startLocation);
-      assertTrue(client.beginRide(vehicleId, userId, startLocation));
+      assertTrue(client.beginRide(vehicleId, userId, startLocation).isPresent());
       assertNotNull(vehicleRide.selectOne(Path.key(vehicleId)));
       assertTrue(userInRide.selectOne(Path.key(userId)));
 
       // Create a new vehicle and attempt to begin a ride
       var vehicleId2 = client.createVehicle();
       client.updateVehicle(vehicleId2, 100, startLocation);
-      assertFalse(client.beginRide(vehicleId2, userId, startLocation));
+      assertFalse(client.beginRide(vehicleId2, userId, startLocation).isPresent());
       assertNull(vehicleRide.selectOne(Path.key(vehicleId2)));
 
       // Create a new user and attempt to begin a ride
       var userId2 = client.createAccount("b@example.com").orElseThrow();
 
       // Attempt to ride a vehicle in an existing ride
-      assertFalse(client.beginRide(vehicleId, userId2, startLocation));
+      assertFalse(client.beginRide(vehicleId, userId2, startLocation).isPresent());
 
       // Set battery too low to start
       client.updateVehicle(vehicleId2, 9, startLocation);
-      assertFalse(client.beginRide(vehicleId2, userId2, startLocation));
+      assertFalse(client.beginRide(vehicleId2, userId2, startLocation).isPresent());
       assertNull(vehicleRide.selectOne(Path.key(vehicleId2)));
 
       // Set battery high enough to start but user too far away
       client.updateVehicle(vehicleId2, 100, new LatLng(3L, 4L));
-      assertFalse(client.beginRide(vehicleId2, userId2, startLocation));
+      assertFalse(client.beginRide(vehicleId2, userId2, startLocation).isPresent());
       assertNull(vehicleRide.selectOne(Path.key(vehicleId2)));
     }
   }
@@ -148,7 +150,8 @@ public class EVClientTest extends TestCase {
       // begin a ride
       var startLocation = new LatLng(1L, 2L);
       client.updateVehicle(vehicleId, 100, startLocation);
-      assertTrue(client.beginRide(vehicleId, userId, startLocation));
+      var rideId = client.beginRide(vehicleId, userId, startLocation).orElseThrow();
+      assertNotNull(vehicleRide.selectOne(Path.key(vehicleId)));
 
       // Create a second user
       var userId2 = client.createAccount("b@example.com").orElseThrow();
@@ -169,14 +172,15 @@ public class EVClientTest extends TestCase {
       // The ride should no longer be in progress
       assertNull(vehicleRide.selectOne(Path.key(vehicleId)));
       // The user's ride history should be updated
-      List<Object> rideHistory = userRideHistory.selectOne(Path.key(userId));
-      assertEquals(1, rideHistory.size());
+      Map<String, Object> rideHistory = userRideHistory.selectOne(Path.key(userId));
+      assertTrue(rideHistory.containsKey(rideId));
       // The ride history should contain three location points
-      List<LatLng> route = userRideHistory.selectOne(Path.key(userId, "route"));
-      assertEquals(3, route.size());
+      List<LatLng> route = userRideHistory.selectOne(Path.key(userId, rideId, "route"));
+      assertEquals(2, route.size());
 
       // Attempt to start a new ride
-      client.beginRide(vehicleId, userId2, startLocation);
+      client.updateVehicle(vehicleId, 100, startLocation);
+      client.beginRide(vehicleId, userId2, startLocation).orElseThrow();
       // The ride should be in progress
       assertNotNull(vehicleRide.selectOne(Path.key(vehicleId)));
     }

@@ -120,12 +120,13 @@ public class EVClient {
   // **********
   // Rides
   // **********
-  public Boolean beginRide(String vehicleId, String userId, LatLng userLocation) {
+  public Optional<String> beginRide(String vehicleId, String userId, LatLng userLocation) {
     var rideId = UUID.randomUUID().toString();
     rideBeginDepot.append(new RideBegin(userId, vehicleId, userLocation, rideId));
     // query a pstate to determine if this invocation caused the ride to start
     var currentVehicleRideId = vehicleRide.selectOne(Path.key(vehicleId, "rideId"));
-    return rideId.equals(currentVehicleRideId);
+    if (rideId.equals(currentVehicleRideId)) return Optional.of(rideId);
+    return Optional.empty();
   }
 
   public void endRide(String vehicleId, String userId) {

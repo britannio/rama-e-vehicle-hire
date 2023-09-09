@@ -6,6 +6,8 @@ import com.rpl.rama.module.StreamTopology;
 import com.rpl.rama.ops.Ops;
 import org.example.data.LatLng;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -37,23 +39,6 @@ public class EVModule implements RamaModule {
             )
         )
     );
-//    users.pstate("$$userInRide", PState.mapSchema(
-//        String.class, // userId
-//        Boolean.class
-//    ));
-    users.pstate("$$userRideHistory", PState.mapSchema(
-        String.class, // userId
-        PState.listSchema(PState.fixedKeysSchema(
-            "userId", String.class,
-            "rideId", String.class,
-            "vehicleId", String.class,
-            "startLocation", LatLng.class,
-            "endLocation", LatLng.class,
-            "startTimestamp", Long.class,
-            "endTimestamp", Long.class,
-            "route", PState.listSchema(LatLng.class)
-        ))
-    ));
     users.pstate("$$emailToUserId", PState.mapSchema(
         String.class, // email
         String.class // userId
@@ -66,21 +51,20 @@ public class EVModule implements RamaModule {
         // Jump to the partition via hashed userId
         // Create the user
         .localSelect("$$emailToUserId", Path.key("*email")).out("*userId")
-        .ifTrue(new Expr(Ops.IS_NULL, "*userId"),
-            Block
-                // Generate a userId
-                .each(UUID.randomUUID()::toString).out("*userId")
-                // Set the emailToUserId entry
-                .localTransform("$$emailToUserId", Path.key("*email").termVal("*userId"))
-                // TODO will the following code run before the append is acknowledged as required?
-                .hashPartition("*userId")
-                .localTransform("$$users",
-                    Path.key("*userId")
-                        .multiPath(
-                            Path.key("email").termVal("*email"),
-                            Path.key("creationUUID").termVal("*creationUUID")
-                        )
+        // Stop if the email is already associated with a user
+        .keepTrue(new Expr(Ops.IS_NULL, "*userId"))
+        // Generate a userId
+        .each(() -> UUID.randomUUID().toString()).out("*userId")
+        // Set the emailToUserId entry
+        .localTransform("$$emailToUserId", Path.key("*email").termVal("*userId"))
+        .hashPartition("*userId")
+        .localTransform("$$users",
+            Path.key("*userId")
+                .multiPath(
+                    Path.key("email").termVal("*email"),
+                    Path.key("creationUUID").termVal("*creationUUID")
                 )
+
         );
 
   }
@@ -98,13 +82,11 @@ public class EVModule implements RamaModule {
     ));
     vehicles.pstate("$$vehicleLocationHistory",
         PState.mapSchema(
-            String.class,
-            PState.listSchema(
-                PState.fixedKeysSchema(
-                    "location", LatLng.class,
-                    "timestamp", Long.class
-                )
-            )
+            String.class, // vehicleId
+            PState.mapSchema(
+                Long.class, // timestamp (ms)
+                LatLng.class
+            ).subindexed()
         ));
     vehicles.pstate("$$vehicleRide",
         PState.mapSchema(
@@ -122,6 +104,22 @@ public class EVModule implements RamaModule {
     vehicles.pstate("$$userInRide", PState.mapSchema(
         String.class, // userId
         Boolean.class
+    ));
+
+    vehicles.pstate("$$userRideHistory", PState.mapSchema(
+        String.class, // userId
+        PState.mapSchema(
+            String.class, // rideId
+            PState.fixedKeysSchema(
+                "rideId", String.class,
+                "vehicleId", String.class,
+                "startLocation", LatLng.class,
+                "endLocation", LatLng.class,
+                "startTimestamp", Long.class,
+                "endTimestamp", Long.class,
+                "route", PState.listSchema(LatLng.class)
+            )
+        )
     ));
 
     // Verify that a vehicle with this id does not exist
@@ -150,7 +148,13 @@ public class EVModule implements RamaModule {
                     Path.key("battery").termVal("*battery"),
                     Path.key("location").termVal("*location")
                 )
-        );
+        )
+        .each(System::currentTimeMillis).out("*timestamp")
+        .localTransform("$$vehicleLocationHistory",
+            Path.key("*vehicleId", "*timestamp").termVal("*location")
+        )
+
+    ;
 
     vehicles.source("*rideBegin").out("*out")
         .macro(extractJavaFields("*out", "*userId", "*vehicleId", "*userLocation", "*rideId"))
@@ -168,6 +172,7 @@ public class EVModule implements RamaModule {
         .select("$$userInRide", Path.key("*userId").nullToVal(false)).out("*userInRide")
         // Stop if the user is in a ride
         .keepTrue(new Expr(Ops.NOT, "*userInRide"))
+        .each(System::currentTimeMillis).out("*timestamp")
         // Create the ride
         .localTransform("$$vehicleRide",
             Path.key("*vehicleId")
@@ -175,7 +180,7 @@ public class EVModule implements RamaModule {
                     Path.key("rideId").termVal("*rideId"),
                     Path.key("riderId").termVal("*userId"),
                     Path.key("startLocation").termVal("*location"),
-                    Path.key("startTimestamp").termVal(System.currentTimeMillis())
+                    Path.key("startTimestamp").termVal("*timestamp")
                 )
         )
         .hashPartition("*userId")
@@ -186,6 +191,52 @@ public class EVModule implements RamaModule {
                 .localTransform("$$vehicleRide", Path.key("*vehicleId").termVal(null)),
             // FALSE: update $$userInRide
             Block.localTransform("$$userInRide", Path.key("*userId").termVal(true))
+        );
+
+    vehicles.source("*rideEnd").out("*out")
+        .macro(extractJavaFields("*out", "*userId", "*vehicleId"))
+        .localSelect("$$vehicleRide", Path.key("*vehicleId")).out("*vehicleRide")
+        // Stop if the vehicle is not in a ride
+        .keepTrue(new Expr(Ops.IS_NOT_NULL, "*vehicleRide"))
+        .each((Map<String, Object> v) -> v.get("riderId"), "*vehicleRide").out("*riderId")
+        .each((Map<String, Object> v) -> v.get("rideId"), "*vehicleRide").out("*rideId")
+        .each((Map<String, Object> v) -> v.get("startLocation"), "*vehicleRide").out("*startLocation")
+        .each((Map<String, Object> v) -> v.get("startTimestamp"), "*vehicleRide").out("*startTimestamp")
+        // Stop if the rider is not the user
+        .keepTrue(new Expr(Ops.EQUAL, "*riderId", "*userId"))
+        // Wipe the vehicle ride
+        .localTransform("$$vehicleRide", Path.key("*vehicleId").termVal(null))
+        // Get the intermediate vehicle location history where timestamp > startTimestamp
+        .each(System::currentTimeMillis).out("*endTimestamp")
+        .localSelect("$$vehicles", Path.key("*vehicleId", "location")).out("*endLocation")
+        .localSelect("$$vehicleLocationHistory",
+            Path.subselect(
+                Path
+                    .key("*vehicleId")
+                    .sortedMapRange("*startTimestamp", "*endTimestamp")
+                    .mapVals()
+            )
+        ).out("*vehicleLocationHistory")
+        // Add startLocation to the beginning of the vehicle location history
+        .each((List<LatLng> route, LatLng startLocation) -> {
+          var newRoute = new ArrayList<>();
+          newRoute.add(startLocation);
+          newRoute.addAll(route);
+          return newRoute;
+        }, "*vehicleLocationHistory", "*startLocation").out("*route")
+        .hashPartition("*userId")
+        .localTransform("$$userInRide", Path.key("*userId").termVal(false))
+        .localTransform("$$userRideHistory",
+            Path.key("*userId", "*rideId")
+                .multiPath(
+                    Path.key("rideId").termVal("*rideId"),
+                    Path.key("vehicleId").termVal("*vehicleId"),
+                    Path.key("startLocation").termVal("*startLocation"),
+                    Path.key("endLocation").termVal("*endLocation"),
+                    Path.key("startTimestamp").termVal("*startTimestamp"),
+                    Path.key("endTimestamp").termVal("*endTimestamp"),
+                    Path.key("route").termVal("*route")
+                )
         );
 
   }
