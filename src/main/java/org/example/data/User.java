@@ -1,7 +1,11 @@
 package org.example.data;
 
 import com.rpl.rama.RamaSerializable;
+import lombok.Data;
 
-public record User(String userId, String email, String creationUUID) implements RamaSerializable {
+public @Data class User implements RamaSerializable {
+  public final String userId;
+  public final String email;
+  public final String creationUUID;
 }
 

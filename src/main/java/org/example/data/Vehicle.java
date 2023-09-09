@@ -1,7 +1,12 @@
 package org.example.data;
 
 import com.rpl.rama.RamaSerializable;
+import lombok.Data;
 
-public record Vehicle(String vehicleId, LatLng location,
-                      String creationUUID) implements RamaSerializable {
+
+public @Data class Vehicle implements RamaSerializable {
+  public final String vehicleId;
+  public final Integer battery;
+  public final LatLng location;
+  public final String creationUUID;
 }
