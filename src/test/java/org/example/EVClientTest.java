@@ -84,11 +84,40 @@ public class EVClientTest extends TestCase {
   }
 
   public void testGetUserRideHistory() {
+    // Begin a ride, update the vehicle location a few times, end the ride, expect a ride history
+    // entry with the correct fields
   }
 
-  public void testBeginRide() {
+  public void testBeginRide() throws Exception {
+    // Disallow if the user has an active ride
+    // Disallow if the vehicle is occupied
+    // Disallow if the battery is too low (10%)
+    // Disallow if the user is too far away from the vehicle
+    try (InProcessCluster ipc = InProcessCluster.create()) {
+      var client = launchModule(ipc);
+      var userInRide = ipc.clusterPState(moduleName, "$$userInRide");
+      var vehicleRide = ipc.clusterPState(moduleName, "$$vehicleRide");
+      var emailToUserId = ipc.clusterPState(moduleName, "$$emailToUserId");
+
+      var email = "test@example.com";
+      assertTrue(client.createAccount(email));
+      String userId = emailToUserId.selectOne(Path.key(email));
+
+      var vehicleId = client.createVehicle();
+      var startLocation = new LatLng(1L, 2L);
+      // update the vehicle location and battery
+      client.updateVehicle(vehicleId, 100, startLocation);
+      assertTrue(client.beginRide(vehicleId, userId, startLocation));
+      // expect data in $$vehicleRide and $$userInRide,
+      assertNotNull(vehicleRide.selectOne(Path.key(vehicleId)));
+      assertTrue(userInRide.selectOne(Path.key(userId)));
+
+    }
   }
 
   public void testEndRide() {
+  }
+
+  public void testGetVehiclesNearLocation() {
   }
 }
