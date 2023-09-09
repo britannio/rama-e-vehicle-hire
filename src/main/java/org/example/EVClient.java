@@ -86,16 +86,19 @@ public class EVClient {
     return email.matches("^[^@]+@[^@]+$");
   }
 
-  public Boolean createAccount(String email) {
+  public Optional<String> createAccount(String email) {
     if (!isValidEmail(email)) {
-      return false;
+      return Optional.empty();
     }
     var creationUUID = UUID.randomUUID().toString();
     userRegistrationDepot.append(new UserRegistration(creationUUID, email));
     // select the user with a matching email and check if the creationUUID matches
-    var userId = emailToUserId.selectOne(Path.key(email));
+    String userId = emailToUserId.selectOne(Path.key(email));
     var matchingCreationUUID = users.selectOne(Path.key(userId, "creationUUID"));
-    return creationUUID.equals(matchingCreationUUID);
+
+    if (creationUUID.equals(matchingCreationUUID)) return Optional.of(userId);
+
+    return Optional.empty();
   }
 
   public List<CompletedRide> getUserRideHistory(String userId) {

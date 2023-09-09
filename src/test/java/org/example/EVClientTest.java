@@ -6,6 +6,7 @@ import com.rpl.rama.test.LaunchConfig;
 import junit.framework.TestCase;
 import org.example.data.LatLng;
 
+import java.util.List;
 import java.util.Map;
 
 public class EVClientTest extends TestCase {
@@ -62,11 +63,10 @@ public class EVClientTest extends TestCase {
       var validEmail = "test@example.com";
       assertNull(emailToUserId.selectOne(Path.key(validEmail)));
       var created = client.createAccount(validEmail);
-      assertTrue(created);
+      assertTrue(created.isPresent());
       var userId = emailToUserId.selectOne(Path.key(validEmail));
       assertNotNull(userId);
       assertNotNull(users.selectOne(Path.key(userId)));
-
     }
   }
 
@@ -78,7 +78,7 @@ public class EVClientTest extends TestCase {
       // Creating an account with an invalid email should fail
       var invalidEmail = "test";
       var created = client.createAccount(invalidEmail);
-      assertFalse(created);
+      assertTrue(created.isEmpty());
       assertNull(emailToUserId.selectOne(Path.key(invalidEmail)));
     }
   }
@@ -88,34 +88,98 @@ public class EVClientTest extends TestCase {
     // entry with the correct fields
   }
 
+
   public void testBeginRide() throws Exception {
-    // Disallow if the user has an active ride
-    // Disallow if the vehicle is occupied
-    // Disallow if the battery is too low (10%)
-    // Disallow if the user is too far away from the vehicle
     try (InProcessCluster ipc = InProcessCluster.create()) {
       var client = launchModule(ipc);
       var userInRide = ipc.clusterPState(moduleName, "$$userInRide");
       var vehicleRide = ipc.clusterPState(moduleName, "$$vehicleRide");
-      var emailToUserId = ipc.clusterPState(moduleName, "$$emailToUserId");
 
-      var email = "test@example.com";
-      assertTrue(client.createAccount(email));
-      String userId = emailToUserId.selectOne(Path.key(email));
+      // Create a user to ride the vehicle
+      var userId = client.createAccount("a@example.com").orElseThrow();
 
+      // Create a vehicle
       var vehicleId = client.createVehicle();
       var startLocation = new LatLng(1L, 2L);
+
       // update the vehicle location and battery
       client.updateVehicle(vehicleId, 100, startLocation);
       assertTrue(client.beginRide(vehicleId, userId, startLocation));
-      // expect data in $$vehicleRide and $$userInRide,
       assertNotNull(vehicleRide.selectOne(Path.key(vehicleId)));
       assertTrue(userInRide.selectOne(Path.key(userId)));
 
+      // Create a new vehicle and attempt to begin a ride
+      var vehicleId2 = client.createVehicle();
+      client.updateVehicle(vehicleId2, 100, startLocation);
+      assertFalse(client.beginRide(vehicleId2, userId, startLocation));
+      assertNull(vehicleRide.selectOne(Path.key(vehicleId2)));
+
+      // Create a new user and attempt to begin a ride
+      var userId2 = client.createAccount("b@example.com").orElseThrow();
+
+      // Attempt to ride a vehicle in an existing ride
+      assertFalse(client.beginRide(vehicleId, userId2, startLocation));
+
+      // Set battery too low to start
+      client.updateVehicle(vehicleId2, 9, startLocation);
+      assertFalse(client.beginRide(vehicleId2, userId2, startLocation));
+      assertNull(vehicleRide.selectOne(Path.key(vehicleId2)));
+
+      // Set battery high enough to start but user too far away
+      client.updateVehicle(vehicleId2, 100, new LatLng(3L, 4L));
+      assertFalse(client.beginRide(vehicleId2, userId2, startLocation));
+      assertNull(vehicleRide.selectOne(Path.key(vehicleId2)));
     }
   }
 
-  public void testEndRide() {
+  public void testEndRide() throws Exception {
+    try (InProcessCluster ipc = InProcessCluster.create()) {
+      var client = launchModule(ipc);
+      var vehicleRide = ipc.clusterPState(moduleName, "$$vehicleRide");
+      var userRideHistory = ipc.clusterPState(moduleName, "$$userRideHistory");
+
+      // Create a user and vehicle
+      var userId = client.createAccount("a@example.com").orElseThrow();
+      var vehicleId = client.createVehicle();
+
+      // Attempt to end a ride that doesn't exist (nothing to assert)
+      client.endRide(vehicleId, userId);
+
+      // begin a ride
+      var startLocation = new LatLng(1L, 2L);
+      client.updateVehicle(vehicleId, 100, startLocation);
+      assertTrue(client.beginRide(vehicleId, userId, startLocation));
+
+      // Create a second user
+      var userId2 = client.createAccount("b@example.com").orElseThrow();
+
+      // Attempt to end the ride as the second user
+      client.endRide(vehicleId, userId2);
+      // The ride should still be in progress
+      assertNotNull(vehicleRide.selectOne(Path.key(vehicleId)));
+      // The second user's ride history should be empty
+      assertNull(userRideHistory.selectOne(Path.key(userId2)));
+
+      // Update the vehicle location and battery
+      var intermediateLocation = new LatLng(3L, 4L);
+      client.updateVehicle(vehicleId, 90, intermediateLocation);
+
+      // End the ride
+      client.endRide(vehicleId, userId);
+      // The ride should no longer be in progress
+      assertNull(vehicleRide.selectOne(Path.key(vehicleId)));
+      // The user's ride history should be updated
+      List<Object> rideHistory = userRideHistory.selectOne(Path.key(userId));
+      assertEquals(1, rideHistory.size());
+      // The ride history should contain three location points
+      List<LatLng> route = userRideHistory.selectOne(Path.key(userId, "route"));
+      assertEquals(3, route.size());
+
+      // Attempt to start a new ride
+      client.beginRide(vehicleId, userId2, startLocation);
+      // The ride should be in progress
+      assertNotNull(vehicleRide.selectOne(Path.key(vehicleId)));
+    }
   }
 
   public void testGetVehiclesNearLocation() {
