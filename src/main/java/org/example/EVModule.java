@@ -6,6 +6,7 @@ import com.rpl.rama.module.StreamTopology;
 import com.rpl.rama.ops.Ops;
 import org.example.data.LatLng;
 
+import java.util.Map;
 import java.util.UUID;
 
 import static com.rpl.rama.helpers.TopologyUtils.extractJavaFields;
@@ -18,11 +19,6 @@ public class EVModule implements RamaModule {
     }
   }
 
-  public static class ExtractUserId extends TopologyUtils.ExtractJavaField {
-    public ExtractUserId() {
-      super("userId");
-    }
-  }
 
   public static class ExtractUserEmail extends TopologyUtils.ExtractJavaField {
     public ExtractUserEmail() {
@@ -41,13 +37,10 @@ public class EVModule implements RamaModule {
             )
         )
     );
-    users.pstate("$$userRide", PState.mapSchema(
-        String.class, // userId
-        PState.fixedKeysSchema(
-            "vehicleId", String.class,
-            "rideId", String.class
-        )
-    ));
+//    users.pstate("$$userInRide", PState.mapSchema(
+//        String.class, // userId
+//        Boolean.class
+//    ));
     users.pstate("$$userRideHistory", PState.mapSchema(
         String.class, // userId
         PState.listSchema(PState.fixedKeysSchema(
@@ -120,11 +113,16 @@ public class EVModule implements RamaModule {
                 "rideId", String.class,
                 "riderId", String.class,
                 "startLocation", LatLng.class,
-                "endLocation", LatLng.class,
                 "startTimestamp", Long.class
             )
         )
     );
+
+
+    vehicles.pstate("$$userInRide", PState.mapSchema(
+        String.class, // userId
+        Boolean.class
+    ));
 
     // Verify that a vehicle with this id does not exist
     // Add the vehicle to the vehicles pstate (battery = 0, location = (0,0)
@@ -153,7 +151,45 @@ public class EVModule implements RamaModule {
                     Path.key("location").termVal("*location")
                 )
         );
+
+    vehicles.source("*rideBegin").out("*out")
+        .macro(extractJavaFields("*out", "*userId", "*vehicleId", "*userLocation", "*rideId"))
+        .localSelect("$$vehicles", Path.key("*vehicleId")).out("*vehicle")
+        .each((Map<String, Object> v) -> v.get("battery"), "*vehicle").out("*battery")
+        // Stop if the battery is below 10%
+        .keepTrue(new Expr(Ops.GREATER_THAN_OR_EQUAL, "*battery", 10))
+        .each((Map<String, Object> v) -> v.get("location"), "*vehicle").out("*location")
+        .each(LatLng::distanceBetween, "*location", "*userLocation").out("*distance")
+        // Stop if the user is over 25m away from the vehicle
+        .keepTrue(new Expr(Ops.LESS_THAN_OR_EQUAL, "*distance", 25))
+        .localSelect("$$vehicleRide", Path.key("*vehicleId")).out("*vehicleRide")
+        // Stop if the vehicle is in a ride
+        .keepTrue(new Expr(Ops.IS_NULL, "*vehicleRide"))
+        .select("$$userInRide", Path.key("*userId").nullToVal(false)).out("*userInRide")
+        // Stop if the user is in a ride
+        .keepTrue(new Expr(Ops.NOT, "*userInRide"))
+        // Create the ride
+        .localTransform("$$vehicleRide",
+            Path.key("*vehicleId")
+                .multiPath(
+                    Path.key("rideId").termVal("*rideId"),
+                    Path.key("riderId").termVal("*userId"),
+                    Path.key("startLocation").termVal("*location"),
+                    Path.key("startTimestamp").termVal(System.currentTimeMillis())
+                )
+        )
+        .hashPartition("*userId")
+        .localSelect("$$userInRide", Path.key("*userId")).out("*userInRide")
+        .ifTrue("*userInRide",
+            // TRUE: roll back the change to $$vehicleRide
+            Block.hashPartition("*vehicleId")
+                .localTransform("$$vehicleRide", Path.key("*vehicleId").termVal(null)),
+            // FALSE: update $$userInRide
+            Block.localTransform("$$userInRide", Path.key("*userId").termVal(true))
+        );
+
   }
+
 
   @Override
   public void define(Setup setup, Topologies topologies) {

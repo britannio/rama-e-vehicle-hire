@@ -21,6 +21,7 @@ public class EVClient {
   private final PState emailToUserId;
   private final PState userRideHistory;
   private final PState vehicleRide;
+  private final PState userInRide;
 
   public EVClient(ClusterManagerBase cluster) {
     String moduleName = EVModule.class.getName();
@@ -36,6 +37,7 @@ public class EVClient {
     emailToUserId = cluster.clusterPState(moduleName, "$$emailToUserId");
     userRideHistory = cluster.clusterPState(moduleName, "$$userRideHistory");
     vehicleRide = cluster.clusterPState(moduleName, "$$vehicleRide");
+    userInRide = cluster.clusterPState(moduleName, "$$userInRide");
   }
 
   // **********
@@ -69,6 +71,11 @@ public class EVClient {
 
   public void updateVehicle(String vehicleId, int battery, LatLng latLng) {
     vehicleUpdateDepot.append(new VehicleUpdate(vehicleId, battery, latLng));
+  }
+
+  public List<Vehicle> getVehiclesNearLocation(LatLng latLng, int max) {
+    // TODO implement this
+    return null;
   }
 
   // **********
@@ -114,7 +121,7 @@ public class EVClient {
     var rideId = UUID.randomUUID().toString();
     rideBeginDepot.append(new RideBegin(userId, vehicleId, userLocation, rideId));
     // query a pstate to determine if this invocation caused the ride to start
-    var currentVehicleRideId = vehicleRide.selectOne(Path.key(vehicleId).key(rideId));
+    var currentVehicleRideId = vehicleRide.selectOne(Path.key(vehicleId, "rideId"));
     return rideId.equals(currentVehicleRideId);
   }
 
