@@ -21,7 +21,6 @@ public class EVClient {
   private final PState emailToUserId;
   private final PState userRideHistory;
   private final PState vehicleRide;
-  private final PState userInRide;
 
   public EVClient(ClusterManagerBase cluster) {
     String moduleName = EVModule.class.getName();
@@ -37,7 +36,6 @@ public class EVClient {
     emailToUserId = cluster.clusterPState(moduleName, "$$emailToUserId");
     userRideHistory = cluster.clusterPState(moduleName, "$$userRideHistory");
     vehicleRide = cluster.clusterPState(moduleName, "$$vehicleRide");
-    userInRide = cluster.clusterPState(moduleName, "$$userInRide");
   }
 
   // **********
@@ -102,19 +100,17 @@ public class EVClient {
   }
 
   public List<CompletedRide> getUserRideHistory(String userId) {
-    var history = userRideHistory.select(Path.key(userId));
-    return null;
-//    return history
-//        .stream().map((Map m) -> Map.copyOf<String, Object>(m))
-//        .map((Map m) -> new CompletedRide(
-//        (String) m.get("userId"),
-//        (String) m.get("rideId"),
-//        (String) m.get("vehicleId"),
-//        (LocalDateTime) LocalDateTime.ofEpochSecond((Long) m.get("beginTimestamp"), 0 , ZoneOffset.UTC),
-//        (LocalDateTime) LocalDateTime.ofEpochSecond((Long) m.get("endTimestamp"), 0 , ZoneOffset.UTC),
-//        (LatLng) m.get("beginLocation"),
-//        (LatLng) m.get("endLocation")
-//    )).collect(Collectors.toList());
+    List<Map<String, Object>> results = userRideHistory.select(Path.key(userId).mapVals());
+    return results.stream().map((m) -> new CompletedRide(
+        userId,
+        (String) m.get("rideId"),
+        (String) m.get("vehicleId"),
+        (Long) m.get("startTimestamp"),
+        (Long) m.get("endTimestamp"),
+        (LatLng) m.get("startLocation"),
+        (LatLng) m.get("endLocation"),
+        (List<LatLng>) m.get("route")
+    )).toList();
   }
 
   // **********

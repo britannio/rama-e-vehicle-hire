@@ -46,10 +46,6 @@ public class EVModule implements RamaModule {
 
     users.source("*userRegistration").out("*out")
         .macro(extractJavaFields("*out", "*email", "*creationUUID"))
-        // Ensure that emailToUserId has no entry for this email
-        // Generate a userId and set the emailToUserId entry
-        // Jump to the partition via hashed userId
-        // Create the user
         .localSelect("$$emailToUserId", Path.key("*email")).out("*userId")
         // Stop if the email is already associated with a user
         .keepTrue(new Expr(Ops.IS_NULL, "*userId"))
@@ -58,6 +54,7 @@ public class EVModule implements RamaModule {
         // Set the emailToUserId entry
         .localTransform("$$emailToUserId", Path.key("*email").termVal("*userId"))
         .hashPartition("*userId")
+        // Create the user
         .localTransform("$$users",
             Path.key("*userId")
                 .multiPath(
@@ -219,9 +216,8 @@ public class EVModule implements RamaModule {
         ).out("*vehicleLocationHistory")
         // Add startLocation to the beginning of the vehicle location history
         .each((List<LatLng> route, LatLng startLocation) -> {
-          var newRoute = new ArrayList<>();
-          newRoute.add(startLocation);
-          newRoute.addAll(route);
+          var newRoute = new ArrayList<>(route);
+          newRoute.add(0, startLocation);
           return newRoute;
         }, "*vehicleLocationHistory", "*startLocation").out("*route")
         .hashPartition("*userId")
