@@ -85,9 +85,46 @@ public class EVClientTest extends TestCase {
     }
   }
 
-  public void testGetUserRideHistory() {
+  public void testGetUserRideHistory() throws Exception {
     // Begin a ride, update the vehicle location a few times, end the ride, expect a ride history
     // entry with the correct fields
+
+    try (InProcessCluster ipc = InProcessCluster.create()) {
+      var client = launchModule(ipc);
+
+      var userId = client.createAccount("test@example.com").orElseThrow();
+      var vehicleId = client.createVehicle();
+      var startLocation = new LatLng(1L, 2L);
+      client.updateVehicle(vehicleId, 100, startLocation);
+
+      // Begin a ride
+      client.beginRide(vehicleId, userId, startLocation).orElseThrow();
+      var intermediateLocations = List.of(
+          new LatLng(3L, 4L),
+          new LatLng(5L, 6L),
+          new LatLng(7L, 8L)
+      );
+      // Update the vehicle location a few times
+      for (var location : intermediateLocations) {
+        client.updateVehicle(vehicleId, 100, location);
+      }
+
+      // End the ride
+      client.endRide(vehicleId, userId);
+
+      // A single ride should be present
+      var rideHistory = client.getUserRideHistory(userId);
+      assertEquals(1, rideHistory.size());
+      var ride = rideHistory.get(0);
+
+      // The route should contain the start location and all the updates
+      assertEquals(4, ride.route.size());
+      assertEquals(startLocation, ride.route.get(0));
+      for (int i = 0; i < intermediateLocations.size(); i++) {
+        assertEquals(intermediateLocations.get(i), ride.route.get(i + 1));
+      }
+
+    }
   }
 
 
