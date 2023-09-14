@@ -5,6 +5,8 @@ import com.rpl.rama.helpers.TopologyUtils;
 import com.rpl.rama.module.StreamTopology;
 import com.rpl.rama.ops.Ops;
 import org.example.data.LatLng;
+import org.example.data.RideBegin;
+import org.example.data.RideEnd;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -149,89 +151,89 @@ public class EVModule implements RamaModule {
         .each(System::currentTimeMillis).out("*timestamp")
         .localTransform("$$vehicleLocationHistory",
             Path.key("*vehicleId", "*timestamp").termVal("*location")
-        )
-
-    ;
-
-    vehicles.source("*rideBegin").out("*out")
-        .macro(extractJavaFields("*out", "*userId", "*vehicleId", "*userLocation", "*rideId"))
-        .localSelect("$$vehicles", Path.key("*vehicleId")).out("*vehicle")
-        .each((Map<String, Object> v) -> v.get("battery"), "*vehicle").out("*battery")
-        // Stop if the battery is below 10%
-        .keepTrue(new Expr(Ops.GREATER_THAN_OR_EQUAL, "*battery", 10))
-        .each((Map<String, Object> v) -> v.get("location"), "*vehicle").out("*location")
-        .each(LatLng::distanceBetween, "*location", "*userLocation").out("*distance")
-        // Stop if the user is over 25m away from the vehicle
-        .keepTrue(new Expr(Ops.LESS_THAN_OR_EQUAL, "*distance", 25))
-        .localSelect("$$vehicleRide", Path.key("*vehicleId")).out("*vehicleRide")
-        // Stop if the vehicle is in a ride
-        .keepTrue(new Expr(Ops.IS_NULL, "*vehicleRide"))
-        .select("$$userInRide", Path.key("*userId").nullToVal(false)).out("*userInRide")
-        // Stop if the user is in a ride
-        .keepTrue(new Expr(Ops.NOT, "*userInRide"))
-        .each(System::currentTimeMillis).out("*timestamp")
-        // Create the ride
-        .localTransform("$$vehicleRide",
-            Path.key("*vehicleId")
-                .multiPath(
-                    Path.key("rideId").termVal("*rideId"),
-                    Path.key("riderId").termVal("*userId"),
-                    Path.key("startLocation").termVal("*location"),
-                    Path.key("startTimestamp").termVal("*timestamp")
-                )
-        )
-        .hashPartition("*userId")
-        .localSelect("$$userInRide", Path.key("*userId")).out("*userInRide")
-        .ifTrue("*userInRide",
-            // TRUE: roll back the change to $$vehicleRide
-            Block.hashPartition("*vehicleId")
-                .localTransform("$$vehicleRide", Path.key("*vehicleId").termVal(null)),
-            // FALSE: update $$userInRide
-            Block.localTransform("$$userInRide", Path.key("*userId").termVal(true))
         );
 
-    vehicles.source("*rideEnd").out("*out")
-        .macro(extractJavaFields("*out", "*userId", "*vehicleId"))
-        .localSelect("$$vehicleRide", Path.key("*vehicleId")).out("*vehicleRide")
-        // Stop if the vehicle is not in a ride
-        .keepTrue(new Expr(Ops.IS_NOT_NULL, "*vehicleRide"))
-        .each((Map<String, Object> v) -> v.get("riderId"), "*vehicleRide").out("*riderId")
-        .each((Map<String, Object> v) -> v.get("rideId"), "*vehicleRide").out("*rideId")
-        .each((Map<String, Object> v) -> v.get("startLocation"), "*vehicleRide").out("*startLocation")
-        .each((Map<String, Object> v) -> v.get("startTimestamp"), "*vehicleRide").out("*startTimestamp")
-        // Stop if the rider is not the user
-        .keepTrue(new Expr(Ops.EQUAL, "*riderId", "*userId"))
-        // Wipe the vehicle ride
-        .localTransform("$$vehicleRide", Path.key("*vehicleId").termVal(null))
-        // Get the intermediate vehicle location history where timestamp > startTimestamp
-        .each(System::currentTimeMillis).out("*endTimestamp")
-        .localSelect("$$vehicles", Path.key("*vehicleId", "location")).out("*endLocation")
-        .localSelect("$$vehicleLocationHistory",
-            Path.subselect(
-                Path
-                    .key("*vehicleId")
-                    .sortedMapRange("*startTimestamp", "*endTimestamp")
-                    .mapVals()
-            )
-        ).out("*vehicleLocationHistory")
-        // Add startLocation to the beginning of the vehicle location history
-        .each((List<LatLng> route, LatLng startLocation) -> {
-          var newRoute = new ArrayList<>(route);
-          newRoute.add(0, startLocation);
-          return newRoute;
-        }, "*vehicleLocationHistory", "*startLocation").out("*route")
-        .hashPartition("*userId")
-        .localTransform("$$userInRide", Path.key("*userId").termVal(false))
-        .localTransform("$$userRideHistory",
-            Path.key("*userId", "*rideId")
-                .multiPath(
-                    Path.key("rideId").termVal("*rideId"),
-                    Path.key("vehicleId").termVal("*vehicleId"),
-                    Path.key("startLocation").termVal("*startLocation"),
-                    Path.key("endLocation").termVal("*endLocation"),
-                    Path.key("startTimestamp").termVal("*startTimestamp"),
-                    Path.key("endTimestamp").termVal("*endTimestamp"),
-                    Path.key("route").termVal("*route")
+    vehicles.source("*ride").out("*out")
+        .subSource("*out",
+            SubSource .create(RideBegin.class)
+                .macro(extractJavaFields("*out", "*userId", "*vehicleId", "*userLocation", "*rideId"))
+                .localSelect("$$vehicles", Path.key("*vehicleId")).out("*vehicle")
+                .each((Map<String, Object> v) -> v.get("battery"), "*vehicle").out("*battery")
+                // Stop if the battery is below 10%
+                .keepTrue(new Expr(Ops.GREATER_THAN_OR_EQUAL, "*battery", 10))
+                .each((Map<String, Object> v) -> v.get("location"), "*vehicle").out("*location")
+                .each(LatLng::distanceBetween, "*location", "*userLocation").out("*distance")
+                // Stop if the user is over 25m away from the vehicle
+                .keepTrue(new Expr(Ops.LESS_THAN_OR_EQUAL, "*distance", 25))
+                .localSelect("$$vehicleRide", Path.key("*vehicleId")).out("*vehicleRide")
+                // Stop if the vehicle is in a ride
+                .keepTrue(new Expr(Ops.IS_NULL, "*vehicleRide"))
+                .select("$$userInRide", Path.key("*userId").nullToVal(false)).out("*userInRide")
+                // Stop if the user is in a ride
+                .keepTrue(new Expr(Ops.NOT, "*userInRide"))
+                .each(System::currentTimeMillis).out("*timestamp")
+                // Create the ride
+                .localTransform("$$vehicleRide",
+                    Path.key("*vehicleId")
+                        .multiPath(
+                            Path.key("rideId").termVal("*rideId"),
+                            Path.key("riderId").termVal("*userId"),
+                            Path.key("startLocation").termVal("*location"),
+                            Path.key("startTimestamp").termVal("*timestamp")
+                        )
+                )
+                .hashPartition("*userId")
+                .localSelect("$$userInRide", Path.key("*userId")).out("*userInRide")
+                .ifTrue("*userInRide",
+                    // TRUE: roll back the change to $$vehicleRide
+                    Block.hashPartition("*vehicleId")
+                        .localTransform("$$vehicleRide", Path.key("*vehicleId").termVal(null)),
+                    // FALSE: update $$userInRide
+                    Block.localTransform("$$userInRide", Path.key("*userId").termVal(true))
+                ),
+            SubSource.create(RideEnd.class)
+                .macro(extractJavaFields("*out", "*userId", "*vehicleId"))
+                .localSelect("$$vehicleRide", Path.key("*vehicleId")).out("*vehicleRide")
+                // Stop if the vehicle is not in a ride
+                .keepTrue(new Expr(Ops.IS_NOT_NULL, "*vehicleRide"))
+                .each((Map<String, Object> v) -> v.get("riderId"), "*vehicleRide").out("*riderId")
+                .each((Map<String, Object> v) -> v.get("rideId"), "*vehicleRide").out("*rideId")
+                .each((Map<String, Object> v) -> v.get("startLocation"), "*vehicleRide").out("*startLocation")
+                .each((Map<String, Object> v) -> v.get("startTimestamp"), "*vehicleRide").out("*startTimestamp")
+                // Stop if the rider is not the user
+                .keepTrue(new Expr(Ops.EQUAL, "*riderId", "*userId"))
+                // Wipe the vehicle ride
+                .localTransform("$$vehicleRide", Path.key("*vehicleId").termVal(null))
+                // Get the intermediate vehicle location history where timestamp > startTimestamp
+                .each(System::currentTimeMillis).out("*endTimestamp")
+                .localSelect("$$vehicles", Path.key("*vehicleId", "location")).out("*endLocation")
+                .localSelect("$$vehicleLocationHistory",
+                    Path.subselect(
+                        Path
+                            .key("*vehicleId")
+                            .sortedMapRange("*startTimestamp", "*endTimestamp")
+                            .mapVals()
+                    )
+                ).out("*vehicleLocationHistory")
+                // Add startLocation to the beginning of the vehicle location history
+                .each((List<LatLng> route, LatLng startLocation) -> {
+                  var newRoute = new ArrayList<>(route);
+                  newRoute.add(0, startLocation);
+                  return newRoute;
+                }, "*vehicleLocationHistory", "*startLocation").out("*route")
+                .hashPartition("*userId")
+                .localTransform("$$userInRide", Path.key("*userId").termVal(false))
+                .localTransform("$$userRideHistory",
+                    Path.key("*userId", "*rideId")
+                        .multiPath(
+                            Path.key("rideId").termVal("*rideId"),
+                            Path.key("vehicleId").termVal("*vehicleId"),
+                            Path.key("startLocation").termVal("*startLocation"),
+                            Path.key("endLocation").termVal("*endLocation"),
+                            Path.key("startTimestamp").termVal("*startTimestamp"),
+                            Path.key("endTimestamp").termVal("*endTimestamp"),
+                            Path.key("route").termVal("*route")
+                        )
                 )
         );
 
@@ -243,8 +245,7 @@ public class EVModule implements RamaModule {
     setup.declareDepot("*vehicleCreate", Depot.hashBy(ExtractVehicleId.class));
     setup.declareDepot("*vehicleUpdate", Depot.hashBy(ExtractVehicleId.class));
     setup.declareDepot("*userRegistration", Depot.hashBy(ExtractUserEmail.class));
-    setup.declareDepot("*rideBegin", Depot.hashBy(ExtractVehicleId.class));
-    setup.declareDepot("*rideEnd", Depot.hashBy(ExtractVehicleId.class));
+    setup.declareDepot("*ride", Depot.hashBy(ExtractVehicleId.class));
 
     declareUsersTopology(topologies);
     declareVehiclesTopology(topologies);

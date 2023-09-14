@@ -13,8 +13,7 @@ public class EVClient {
   private final Depot vehicleCreateDepot;
   private final Depot vehicleUpdateDepot;
   private final Depot userRegistrationDepot;
-  private final Depot rideBeginDepot;
-  private final Depot rideEndDepot;
+  private final Depot rideDepot;
 
   private final PState vehicles;
   private final PState users;
@@ -28,8 +27,7 @@ public class EVClient {
     vehicleCreateDepot = cluster.clusterDepot(moduleName, "*vehicleCreate");
     vehicleUpdateDepot = cluster.clusterDepot(moduleName, "*vehicleUpdate");
     userRegistrationDepot = cluster.clusterDepot(moduleName, "*userRegistration");
-    rideBeginDepot = cluster.clusterDepot(moduleName, "*rideBegin");
-    rideEndDepot = cluster.clusterDepot(moduleName, "*rideEnd");
+    rideDepot = cluster.clusterDepot(moduleName, "*ride");
 
     vehicles = cluster.clusterPState(moduleName, "$$vehicles");
     users = cluster.clusterPState(moduleName, "$$users");
@@ -118,7 +116,7 @@ public class EVClient {
   // **********
   public Optional<String> beginRide(String vehicleId, String userId, LatLng userLocation) {
     var rideId = UUID.randomUUID().toString();
-    rideBeginDepot.append(new RideBegin(userId, vehicleId, userLocation, rideId));
+    rideDepot.append(new RideBegin(userId, vehicleId, userLocation, rideId));
     // query a pstate to determine if this invocation caused the ride to start
     var currentVehicleRideId = vehicleRide.selectOne(Path.key(vehicleId, "rideId"));
     if (rideId.equals(currentVehicleRideId)) return Optional.of(rideId);
@@ -127,7 +125,7 @@ public class EVClient {
 
   public void endRide(String vehicleId, String userId) {
     // We include the userId as only the user who started the ride can end it.
-    rideEndDepot.append(new RideEnd(userId, vehicleId));
+    rideDepot.append(new RideEnd(userId, vehicleId));
   }
 
 }

@@ -13,27 +13,21 @@ public class EVClientTest extends TestCase {
 
   private static final String moduleName = EVModule.class.getName();
 
+  private EVClient launchModule(InProcessCluster ipc) {
+    var module = new EVModule();
+    ipc.launchModule(module, new LaunchConfig(1, 1));
+    return new EVClient(ipc);
+  }
 
   public void testCreateVehicle() throws Exception {
     try (InProcessCluster ipc = InProcessCluster.create()) {
-      var module = new EVModule();
-      var moduleName = module.getClass().getName();
-      ipc.launchModule(module, new LaunchConfig(1, 1));
-      EVClient client = new EVClient(ipc);
-
+      var client = launchModule(ipc);
       var vehicles = ipc.clusterPState(moduleName, "$$vehicles");
 
       // Creating a vehicle should put it in the $$vehicles PState
       var vehicleId = client.createVehicle();
       assertNotNull(vehicles.selectOne(Path.key(vehicleId)));
-
     }
-  }
-
-  private EVClient launchModule(InProcessCluster ipc) {
-    var module = new EVModule();
-    ipc.launchModule(module, new LaunchConfig(1, 1));
-    return new EVClient(ipc);
   }
 
   public void testUpdateVehicle() throws Exception {
@@ -69,18 +63,10 @@ public class EVClientTest extends TestCase {
       var userId = emailToUserId.selectOne(Path.key(validEmail));
       assertNotNull(userId);
       assertNotNull(users.selectOne(Path.key(userId)));
-    }
-  }
-
-  public void testCreateAccountInvalidEmail() throws Exception {
-    try (InProcessCluster ipc = InProcessCluster.create()) {
-      var client = launchModule(ipc);
-      var emailToUserId = ipc.clusterPState(moduleName, "$$emailToUserId");
 
       // Creating an account with an invalid email should fail
       var invalidEmail = "test";
-      var created = client.createAccount(invalidEmail);
-      assertTrue(created.isEmpty());
+      assertTrue(client.createAccount(invalidEmail).isEmpty());
       assertNull(emailToUserId.selectOne(Path.key(invalidEmail)));
     }
   }
@@ -224,5 +210,7 @@ public class EVClientTest extends TestCase {
   }
 
   public void testGetVehiclesNearLocation() {
+    // set up three vehicles with the same latitudes but different longitudes
+    // Fetch the nearest two vehicles
   }
 }
