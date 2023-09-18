@@ -2,12 +2,16 @@ package org.example;
 
 import com.rpl.rama.*;
 import com.rpl.rama.helpers.TopologyUtils;
+import com.rpl.rama.integration.TaskGlobalContext;
+import com.rpl.rama.integration.TaskGlobalObject;
 import com.rpl.rama.module.StreamTopology;
 import com.rpl.rama.ops.Ops;
 import org.example.data.LatLng;
+import org.example.data.NeighbourVehicle;
 import org.example.data.RideBegin;
 import org.example.data.RideEnd;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -27,6 +31,44 @@ public class EVModule implements RamaModule {
   public static class ExtractUserEmail extends TopologyUtils.ExtractJavaField {
     public ExtractUserEmail() {
       super("email");
+    }
+  }
+
+
+  public static class GlobalKDTree implements TaskGlobalObject {
+    private KDTree kdTree;
+    // Used to support vehicles being moved.
+
+    @Override
+    public void prepareForTask(int taskId, TaskGlobalContext context) {
+      kdTree = new KDTree();
+    }
+
+    @Override
+    public void close() throws IOException {
+
+    }
+
+    public void insert(String vehicleId, LatLng location) {
+      if (kdTree.search(vehicleId)) kdTree.delete(vehicleId);
+      var point = new double[]{location.getLatitude(), location.getLongitude()};
+      kdTree.insert(vehicleId, point);
+    }
+
+    public void delete(String vehicleId) {
+      kdTree.delete(vehicleId);
+    }
+
+    public List<NeighbourVehicle> nearestVehicles(LatLng location, int n) {
+      var point = new double[]{location.getLatitude(), location.getLongitude()};
+      var neighbours = kdTree.nearestNeighbors(point, n);
+      var result = new ArrayList<NeighbourVehicle>();
+      for (int i = 0; i < neighbours.getNodes().size(); i++) {
+        var node = neighbours.getNodes().get(i);
+        var distance = neighbours.getDistances().get(i);
+        result.add(new NeighbourVehicle(node.label, distance));
+      }
+      return result;
     }
   }
 
@@ -155,7 +197,7 @@ public class EVModule implements RamaModule {
 
     vehicles.source("*ride").out("*out")
         .subSource("*out",
-            SubSource .create(RideBegin.class)
+            SubSource.create(RideBegin.class)
                 .macro(extractJavaFields("*out", "*userId", "*vehicleId", "*userLocation", "*rideId"))
                 .localSelect("$$vehicles", Path.key("*vehicleId")).out("*vehicle")
                 .each((Map<String, Object> v) -> v.get("battery"), "*vehicle").out("*battery")
@@ -242,6 +284,8 @@ public class EVModule implements RamaModule {
 
   @Override
   public void define(Setup setup, Topologies topologies) {
+    setup.declareObject("*vehicleLocationTree", new GlobalKDTree());
+
     setup.declareDepot("*vehicleCreate", Depot.hashBy(ExtractVehicleId.class));
     setup.declareDepot("*vehicleUpdate", Depot.hashBy(ExtractVehicleId.class));
     setup.declareDepot("*userRegistration", Depot.hashBy(ExtractUserEmail.class));
@@ -249,6 +293,5 @@ public class EVModule implements RamaModule {
 
     declareUsersTopology(topologies);
     declareVehiclesTopology(topologies);
-
   }
 }

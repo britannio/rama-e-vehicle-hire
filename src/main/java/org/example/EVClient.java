@@ -57,7 +57,6 @@ public class EVClient {
     while (true) {
       String vehicleId = generateVehicleId();
       vehicleCreateDepot.append(new VehicleCreate(creationUUID, vehicleId));
-      // TODO which pstate partition will this read from??
       Map<String, Object> vehicleMap = vehicles.selectOne(Path.key(vehicleId));
       if (vehicleMap.get("creationUUID").equals(creationUUID)) {
         return vehicleId;
@@ -71,6 +70,17 @@ public class EVClient {
 
   public List<Vehicle> getVehiclesNearLocation(LatLng latLng, int max) {
     // TODO implement this
+    // A k-d tree or other 2d index structure could be used to maintain this
+    // But based on tier.app, it appears that the client can display all vehicles in a given region
+    // as long as the vehicle is not actively in a ride.
+    /*
+     * So we could go a level up, do some refactoring and implement regions thus making it trivial
+     * to query for vehicles in a given region. Sorting by distance would not be required.
+     * But the k-d tree would be an interesting test of Rama.
+     *
+     * Seems like tier.app supports paginated reads for a given region but it does eventually supply
+     * all vehicles in a given region. It might actually be doing some location dependent work.
+     * */
     return null;
   }
 
