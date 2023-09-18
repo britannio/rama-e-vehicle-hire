@@ -1,11 +1,13 @@
 package org.example;
 
-import com.rpl.rama.Path;
+import com.rpl.rama.*;
+import com.rpl.rama.ops.Ops;
 import com.rpl.rama.test.InProcessCluster;
 import com.rpl.rama.test.LaunchConfig;
 import junit.framework.TestCase;
 import org.example.data.LatLng;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -209,8 +211,59 @@ public class EVClientTest extends TestCase {
     }
   }
 
-  public void testGetVehiclesNearLocation() {
+  public void testGetVehiclesNearLocation() throws Exception{
     // set up three vehicles with the same latitudes but different longitudes
     // Fetch the nearest two vehicles
+
+    try (InProcessCluster cluster = InProcessCluster.create()) {
+      var client = launchModule(cluster);
+
+      var vehicleId1 = client.createVehicle();
+      var vehicleId2 = client.createVehicle();
+      var vehicleId3 = client.createVehicle();
+
+      var location = new LatLng(1L, 2L);
+      client.updateVehicle(vehicleId1, 100, location);
+      client.updateVehicle(vehicleId2, 100, new LatLng(1L, 3L));
+      client.updateVehicle(vehicleId3, 100, new LatLng(1L, 4L));
+
+      var vehiclesNearLocation = client.getVehiclesNearLocation(location, 2);
+      assertEquals(2, vehiclesNearLocation.size());
+      assertEquals(vehicleId1, vehiclesNearLocation.get(0).getVehicleId());
+      assertEquals(vehicleId2, vehiclesNearLocation.get(1).getVehicleId());
+    }
+  }
+
+  // Ignore below code
+
+  public void testGlobalObject() throws Exception {
+    try (InProcessCluster cluster = InProcessCluster.create()) {
+      RamaModule module = new BasicTaskGlobalModule();
+      cluster.launchModule(module, new LaunchConfig(4, 4));
+      String moduleName = module.getClass().getName();
+
+      Depot depot = cluster.clusterDepot(moduleName, "*depot");
+      depot.append(null);
+    }
+
+  }
+
+
+  public void testBatchBlock() throws  Exception {
+    List data = Arrays.asList(1, 2, 3, 4);
+    Block.each(Ops.PRINTLN, "Starting batch block")
+        .batchBlock(
+            Block
+                // pre-agg
+                .each(Ops.EXPLODE, data).out("*v")
+                .each(Ops.PRINTLN, "Data:", "*v")
+                // agg
+                .agg(Agg.count()).out("*count")
+                .agg(Agg.sum("*v")).out("*sum")
+                // post-agg
+                .each(Ops.PRINTLN, "Count:", "*count")
+                .each(Ops.PRINTLN, "Sum:", "*sum"))
+        .each(Ops.PRINTLN, "Finished batch block")
+        .execute();
   }
 }
