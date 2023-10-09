@@ -7,9 +7,7 @@ import com.rpl.rama.test.LaunchConfig;
 import junit.framework.TestCase;
 import org.example.data.LatLng;
 
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 public class EVClientTest extends TestCase {
 
@@ -20,6 +18,7 @@ public class EVClientTest extends TestCase {
     ipc.launchModule(module, new LaunchConfig(1, 1));
     return new EVClient(ipc);
   }
+
 
   public void testCreateVehicle() throws Exception {
     try (InProcessCluster ipc = InProcessCluster.create()) {
@@ -211,26 +210,40 @@ public class EVClientTest extends TestCase {
     }
   }
 
-  public void testGetVehiclesNearLocation() throws Exception{
-    // set up three vehicles with the same latitudes but different longitudes
-    // Fetch the nearest two vehicles
-
+  public void testGetVehiclesNearLocation() throws Exception {
     try (InProcessCluster cluster = InProcessCluster.create()) {
-      var client = launchModule(cluster);
+      var module = new EVModule();
+      cluster.launchModule(module, new LaunchConfig(4, 4));
+      var client = new EVClient(cluster);
 
-      var vehicleId1 = client.createVehicle();
-      var vehicleId2 = client.createVehicle();
-      var vehicleId3 = client.createVehicle();
 
-      var location = new LatLng(1L, 2L);
-      client.updateVehicle(vehicleId1, 100, location);
-      client.updateVehicle(vehicleId2, 100, new LatLng(1L, 3L));
-      client.updateVehicle(vehicleId3, 100, new LatLng(1L, 4L));
+      var referenceLocation = new LatLng(1L, 2L);
+      var vehicleIdSet = new HashSet<String>();
+      // Create 50 vehicles at the reference location
+      for (int i = 0; i < 50; i++) {
+        var vehicleId = client.createVehicle();
+        vehicleIdSet.add(vehicleId);
+        client.updateVehicle(vehicleId, 100, referenceLocation);
+      }
+      // Create 100 vehicles at random locations
+      for (int i = 0; i < 100; i++) {
+        var vehicleId = client.createVehicle();
+        vehicleIdSet.add(vehicleId);
+        var random = new Random();
+        var randomLocation = new LatLng(random.nextDouble(), random.nextDouble());
+        client.updateVehicle(vehicleId, 100, randomLocation);
+      }
 
-      var vehiclesNearLocation = client.getVehiclesNearLocation(location, 2);
-      assertEquals(2, vehiclesNearLocation.size());
-      assertEquals(vehicleId1, vehiclesNearLocation.get(0).getVehicleId());
-      assertEquals(vehicleId2, vehiclesNearLocation.get(1).getVehicleId());
+      // Assert that there are 150 vehicles
+      assertEquals(150, vehicleIdSet.size());
+
+      var vehiclesNearLocation = client.getVehiclesNearLocation(referenceLocation);
+      assertEquals(50, vehiclesNearLocation.size());
+      // Assert that the vehicles near the reference location are the 50 vehicles created there
+      for (var vehicle : vehiclesNearLocation) {
+        assertEquals(referenceLocation, vehicle.getLocation());
+      }
+
     }
   }
 
@@ -249,7 +262,7 @@ public class EVClientTest extends TestCase {
   }
 
 
-  public void testBatchBlock() throws  Exception {
+  public void testBatchBlock() throws Exception {
     List data = Arrays.asList(1, 2, 3, 4);
     Block.each(Ops.PRINTLN, "Starting batch block")
         .batchBlock(

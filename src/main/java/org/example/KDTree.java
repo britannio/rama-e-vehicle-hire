@@ -194,6 +194,7 @@ class KDTree {
         }
       }
 
+      // If we get here, the distance is greater than all distances in the list
       if (nodes.size() < maxSize) {
         distances.add(distance);
         nodes.add(node);

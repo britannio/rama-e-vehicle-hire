@@ -3,6 +3,7 @@ package org.example;
 import com.rpl.rama.Depot;
 import com.rpl.rama.PState;
 import com.rpl.rama.Path;
+import com.rpl.rama.QueryTopologyClient;
 import com.rpl.rama.cluster.ClusterManagerBase;
 import org.example.data.*;
 
@@ -21,6 +22,8 @@ public class EVClient {
   private final PState userRideHistory;
   private final PState vehicleRide;
 
+  private final QueryTopologyClient<List<Vehicle>> nearestVehiclesClient;
+
   public EVClient(ClusterManagerBase cluster) {
     String moduleName = EVModule.class.getName();
 
@@ -34,6 +37,8 @@ public class EVClient {
     emailToUserId = cluster.clusterPState(moduleName, "$$emailToUserId");
     userRideHistory = cluster.clusterPState(moduleName, "$$userRideHistory");
     vehicleRide = cluster.clusterPState(moduleName, "$$vehicleRide");
+
+    nearestVehiclesClient = cluster.clusterQuery(moduleName, "nearestVehicles");
   }
 
   // **********
@@ -57,10 +62,8 @@ public class EVClient {
     while (true) {
       String vehicleId = generateVehicleId();
       vehicleCreateDepot.append(new VehicleCreate(creationUUID, vehicleId));
-      Map<String, Object> vehicleMap = vehicles.selectOne(Path.key(vehicleId));
-      if (vehicleMap.get("creationUUID").equals(creationUUID)) {
-        return vehicleId;
-      }
+      var actualUUID = vehicles.selectOne(Path.key(vehicleId, "creationUUID"));
+      if (creationUUID.equals(actualUUID)) return vehicleId;
     }
   }
 
@@ -68,20 +71,9 @@ public class EVClient {
     vehicleUpdateDepot.append(new VehicleUpdate(vehicleId, battery, latLng));
   }
 
-  public List<Vehicle> getVehiclesNearLocation(LatLng latLng, int max) {
-    // TODO implement this
-    // A k-d tree or other 2d index structure could be used to maintain this
-    // But based on tier.app, it appears that the client can display all vehicles in a given region
-    // as long as the vehicle is not actively in a ride.
-    /*
-     * So we could go a level up, do some refactoring and implement regions thus making it trivial
-     * to query for vehicles in a given region. Sorting by distance would not be required.
-     * But the k-d tree would be an interesting test of Rama.
-     *
-     * Seems like tier.app supports paginated reads for a given region but it does eventually supply
-     * all vehicles in a given region. It might actually be doing some location dependent work.
-     * */
-    return null;
+  // Top 50 nearest vehicles
+  public List<Vehicle> getVehiclesNearLocation(LatLng latLng) {
+    return nearestVehiclesClient.invoke(latLng);
   }
 
   // **********
