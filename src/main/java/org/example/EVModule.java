@@ -87,8 +87,8 @@ public class EVModule implements RamaModule {
         String.class // userId
     ));
 
-    users.source("*userRegistration").out("*out")
-        .macro(extractJavaFields("*out", "*email", "*creationUUID"))
+    users.source("*userRegistration").out("*arg")
+        .macro(extractJavaFields("*arg", "*email", "*creationUUID"))
         .localSelect("$$emailToUserId", Path.key("*email")).out("*userId")
         // Stop if the email is already associated with a user
         .keepTrue(new Expr(Ops.IS_NULL, "*userId"))
@@ -164,8 +164,8 @@ public class EVModule implements RamaModule {
 
     // Verify that a vehicle with this id does not exist
     // Add the vehicle to the vehicles pstate (battery = 0, location = (0,0)
-    vehicles.source("*vehicleCreate").out("*out")
-        .macro(extractJavaFields("*out", "*creationUUID", "*vehicleId"))
+    vehicles.source("*vehicleCreate").out("*arg")
+        .macro(extractJavaFields("*arg", "*creationUUID", "*vehicleId"))
         .localTransform("$$vehicles",
             Path.key("*vehicleId")
                 // Only performs the write if the current data is null
@@ -178,8 +178,8 @@ public class EVModule implements RamaModule {
                 )
         );
 
-    vehicles.source("*vehicleUpdate").out("*out")
-        .macro(extractJavaFields("*out", "*vehicleId", "*battery", "*location"))
+    vehicles.source("*vehicleUpdate").out("*arg")
+        .macro(extractJavaFields("*arg", "*vehicleId", "*battery", "*location"))
         .localTransform("$$vehicles",
             Path.key("*vehicleId")
                 // Only update a vehicle if it exists
@@ -200,10 +200,10 @@ public class EVModule implements RamaModule {
         }, "*vehicleLocationTree", "*vehicleId", "*location")
     ;
 
-    vehicles.source("*ride").out("*out")
-        .subSource("*out",
+    vehicles.source("*ride").out("*arg")
+        .subSource("*arg",
             SubSource.create(RideBegin.class)
-                .macro(extractJavaFields("*out", "*userId", "*vehicleId", "*userLocation", "*rideId"))
+                .macro(extractJavaFields("*arg", "*userId", "*vehicleId", "*userLocation", "*rideId"))
                 .localSelect("$$vehicles", Path.key("*vehicleId")).out("*vehicle")
                 .each((Map<String, Object> v) -> v.get("battery"), "*vehicle").out("*battery")
                 // Stop if the battery is below 10%
@@ -239,7 +239,7 @@ public class EVModule implements RamaModule {
                     Block.localTransform("$$userInRide", Path.key("*userId").termVal(true))
                 ),
             SubSource.create(RideEnd.class)
-                .macro(extractJavaFields("*out", "*userId", "*vehicleId"))
+                .macro(extractJavaFields("*arg", "*userId", "*vehicleId"))
                 .localSelect("$$vehicleRide", Path.key("*vehicleId")).out("*vehicleRide")
                 // Stop if the vehicle is not in a ride
                 .keepTrue(new Expr(Ops.IS_NOT_NULL, "*vehicleRide"))

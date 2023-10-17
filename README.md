@@ -10,7 +10,7 @@ By virtue of using Rama, the back-end is horizontally scalable from the get-go a
 
 
 Global Objects:
-- vehicleLocaationTree: Stores a `GlobalKDTree` on each task ('partition'). The KDTree tracks the location of vehicles. Querying across all KDTrees is done to gather the nearest 50 vehicles.
+- vehicleLocationTree: Stores a `GlobalKDTree` on each task ('partition'). The KDTree tracks the location of vehicles. Querying across all KDTrees is done to gather the nearest 50 vehicles.
 
 Depots:
 - vehicleCreate: Create a new vehicle
