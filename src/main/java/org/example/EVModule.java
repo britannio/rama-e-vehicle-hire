@@ -114,7 +114,6 @@ public class EVModule implements RamaModule {
     vehicles.pstate("$$vehicles", PState.mapSchema(
         String.class, // vehicleId
         PState.fixedKeysSchema(
-            "vehicleId", String.class,
             "battery", Integer.class,
             "location", String.class,
             "creationUUID", String.class
@@ -151,7 +150,6 @@ public class EVModule implements RamaModule {
         PState.mapSchema(
             String.class, // rideId
             PState.fixedKeysSchema(
-                "rideId", String.class,
                 "vehicleId", String.class,
                 "startLocation", LatLng.class,
                 "endLocation", LatLng.class,
@@ -171,7 +169,6 @@ public class EVModule implements RamaModule {
                 // Only performs the write if the current data is null
                 .filterPred(Ops.IS_NULL)
                 .multiPath(
-                    Path.key("vehicleId").termVal("*vehicleId"),
                     Path.key("battery").termVal(0),
                     Path.key("location").termVal(new LatLng(0L, 0L)),
                     Path.key("creationUUID").termVal("*creationUUID")
@@ -273,7 +270,6 @@ public class EVModule implements RamaModule {
                 .localTransform("$$userRideHistory",
                     Path.key("*userId", "*rideId")
                         .multiPath(
-                            Path.key("rideId").termVal("*rideId"),
                             Path.key("vehicleId").termVal("*vehicleId"),
                             Path.key("startLocation").termVal("*startLocation"),
                             Path.key("endLocation").termVal("*endLocation"),
