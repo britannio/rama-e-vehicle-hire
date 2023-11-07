@@ -20,12 +20,11 @@ Depots:
 
 
 PStates:
-- users: Maps a userId to an email and other user data.
+- user: Maps a userId to an email and other user data.
 - emailToUserId: Maps an email to a user id.
-- vehicles: Maps a vehicle id to all vehicle properties (battery, location)
+- vehicle: Maps a vehicle id to all vehicle properties (battery, location)
 - vehicleLocationHistory: Maps a vehicle id to a subindexed map of timestamps to locations. Effectively a sorted location history.
 - vehicleRide: Maps a vehicle id to ride data if the vehicle is currently in a ride.
-- userInRide: Maps a user id to a boolean representing whether a user is in a ride or not.
 - userRideHistory: Maps a user id to a map of rides keyed by ride id.
 
 Queries:

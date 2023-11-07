@@ -23,19 +23,19 @@ public class EVClientTest extends TestCase {
   public void testCreateVehicle() throws Exception {
     try (InProcessCluster ipc = InProcessCluster.create()) {
       var client = launchModule(ipc);
-      var vehicles = ipc.clusterPState(moduleName, "$$vehicles");
+      var vehicles = ipc.clusterPState(moduleName, "$$vehicle");
 
-      // Creating a vehicle should put it in the $$vehicles PState
+      // Creating a vehicle should put it in the $$vehicle PState
       var vehicleId = client.createVehicle();
       assertNotNull(vehicles.selectOne(Path.key(vehicleId)));
     }
   }
 
   public void testUpdateVehicle() throws Exception {
-    // Changes to the location and battery of a vehicle should be reflected in the $$vehicles PState
+    // Changes to the location and battery of a vehicle should be reflected in the $$vehicle PState
     try (InProcessCluster ipc = InProcessCluster.create()) {
       var client = launchModule(ipc);
-      var vehicles = ipc.clusterPState(moduleName, "$$vehicles");
+      var vehicles = ipc.clusterPState(moduleName, "$$vehicle");
 
       var vehicleId = client.createVehicle();
       var location = new LatLng(1L, 2L);
@@ -53,10 +53,10 @@ public class EVClientTest extends TestCase {
   public void testCreateAccount() throws Exception {
     try (InProcessCluster ipc = InProcessCluster.create()) {
       var client = launchModule(ipc);
-      var users = ipc.clusterPState(moduleName, "$$users");
+      var users = ipc.clusterPState(moduleName, "$$user");
       var emailToUserId = ipc.clusterPState(moduleName, "$$emailToUserId");
 
-      // Creating an account should put it in the $$users PState
+      // Creating an account should put it in the $$user PState
       var validEmail = "test@example.com";
       assertNull(emailToUserId.selectOne(Path.key(validEmail)));
       var created = client.createAccount(validEmail);
@@ -118,7 +118,7 @@ public class EVClientTest extends TestCase {
   public void testBeginRide() throws Exception {
     try (InProcessCluster ipc = InProcessCluster.create()) {
       var client = launchModule(ipc);
-      var userInRide = ipc.clusterPState(moduleName, "$$userInRide");
+      var user = ipc.clusterPState(moduleName, "$$user");
       var vehicleRide = ipc.clusterPState(moduleName, "$$vehicleRide");
 
       // Create a user to ride the vehicle
@@ -132,7 +132,7 @@ public class EVClientTest extends TestCase {
       client.updateVehicle(vehicleId, 100, startLocation);
       assertTrue(client.beginRide(vehicleId, userId, startLocation).isPresent());
       assertNotNull(vehicleRide.selectOne(Path.key(vehicleId)));
-      assertTrue(userInRide.selectOne(Path.key(userId)));
+      assertTrue(user.selectOne(Path.key(userId, "inRide")));
 
       // Create a new vehicle and attempt to begin a ride
       var vehicleId2 = client.createVehicle();

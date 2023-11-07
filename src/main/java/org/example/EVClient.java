@@ -16,8 +16,8 @@ public class EVClient {
   private final Depot userRegistrationDepot;
   private final Depot rideDepot;
 
-  private final PState vehicles;
-  private final PState users;
+  private final PState vehicle;
+  private final PState user;
   private final PState emailToUserId;
   private final PState userRideHistory;
   private final PState vehicleRide;
@@ -32,8 +32,8 @@ public class EVClient {
     userRegistrationDepot = cluster.clusterDepot(moduleName, "*userRegistration");
     rideDepot = cluster.clusterDepot(moduleName, "*ride");
 
-    vehicles = cluster.clusterPState(moduleName, "$$vehicles");
-    users = cluster.clusterPState(moduleName, "$$users");
+    vehicle = cluster.clusterPState(moduleName, "$$vehicle");
+    user = cluster.clusterPState(moduleName, "$$user");
     emailToUserId = cluster.clusterPState(moduleName, "$$emailToUserId");
     userRideHistory = cluster.clusterPState(moduleName, "$$userRideHistory");
     vehicleRide = cluster.clusterPState(moduleName, "$$vehicleRide");
@@ -62,7 +62,7 @@ public class EVClient {
     while (true) {
       String vehicleId = generateVehicleId();
       vehicleCreateDepot.append(new VehicleCreate(creationUUID, vehicleId));
-      var actualUUID = vehicles.selectOne(Path.key(vehicleId, "creationUUID"));
+      var actualUUID = vehicle.selectOne(Path.key(vehicleId, "creationUUID"));
       if (creationUUID.equals(actualUUID)) return vehicleId;
     }
   }
@@ -92,7 +92,7 @@ public class EVClient {
     userRegistrationDepot.append(new UserRegistration(creationUUID, email));
     // select the user with a matching email and check if the creationUUID matches
     String userId = emailToUserId.selectOne(Path.key(email));
-    var matchingCreationUUID = users.selectOne(Path.key(userId, "creationUUID"));
+    var matchingCreationUUID = user.selectOne(Path.key(userId, "creationUUID"));
 
     if (creationUUID.equals(matchingCreationUUID)) return Optional.of(userId);
 
@@ -120,6 +120,7 @@ public class EVClient {
     var rideId = UUID.randomUUID().toString();
     rideDepot.append(new RideBegin(userId, vehicleId, userLocation, rideId));
     // query a pstate to determine if this invocation caused the ride to start
+    // TODO this isn't guaranteed to work if we instantaneously end this ride before we get a chance to query
     var currentVehicleRideId = vehicleRide.selectOne(Path.key(vehicleId, "rideId"));
     if (rideId.equals(currentVehicleRideId)) return Optional.of(rideId);
     return Optional.empty();
