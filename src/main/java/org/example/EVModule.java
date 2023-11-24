@@ -1,18 +1,14 @@
 package org.example;
 
+import clojure.lang.MapEntry;
 import clojure.lang.PersistentVector;
 import com.rpl.rama.*;
 import com.rpl.rama.helpers.TopologyUtils;
-import com.rpl.rama.integration.TaskGlobalContext;
-import com.rpl.rama.integration.TaskGlobalObject;
 import com.rpl.rama.module.StreamTopology;
 import com.rpl.rama.ops.Ops;
 import org.example.data.*;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.stream.Collectors;
 
 import static com.rpl.rama.helpers.TopologyUtils.extractJavaFields;
@@ -31,43 +27,6 @@ public class EVModule implements RamaModule {
     }
   }
 
-
-  public static class GlobalKDTree implements TaskGlobalObject {
-    private KDTree kdTree;
-    // Used to support vehicles being moved.
-
-    @Override
-    public void prepareForTask(int taskId, TaskGlobalContext context) {
-      kdTree = new KDTree();
-    }
-
-    @Override
-    public void close() {
-
-    }
-
-    public void insert(String vehicleId, LatLng location) {
-      if (kdTree.search(vehicleId)) kdTree.delete(vehicleId);
-      var point = new double[]{location.getLatitude(), location.getLongitude()};
-      kdTree.insert(vehicleId, point);
-    }
-
-    public void delete(String vehicleId) {
-      kdTree.delete(vehicleId);
-    }
-
-    public List<NearbyVehicle> nearestVehicles(LatLng location, int n) {
-      var point = new double[]{location.getLatitude(), location.getLongitude()};
-      var neighbours = kdTree.nearestNeighbors(point, n);
-      var result = new ArrayList<NearbyVehicle>();
-      for (int i = 0; i < neighbours.getNodes().size(); i++) {
-        var node = neighbours.getNodes().get(i);
-        var distance = neighbours.getDistances().get(i);
-        result.add(new NearbyVehicle(node.label, distance));
-      }
-      return result;
-    }
-  }
   private static void declareTopology(Topologies topologies) {
     StreamTopology s = topologies.stream("stream");
     s.pstate("$$user",
@@ -90,7 +49,7 @@ public class EVModule implements RamaModule {
         String.class, // vehicleId
         PState.fixedKeysSchema(
             "battery", Integer.class,
-            "location", String.class,
+            "location", LatLng.class,
             "creationUUID", String.class
         )
     ));
@@ -151,13 +110,12 @@ public class EVModule implements RamaModule {
 
         );
 
-    // Verify that a vehicle with this id does not exist
-    // Add the vehicle to the vehicles pstate (battery = 0, location = (0,0)
     s.source("*vehicleCreate").out("*arg")
         .macro(extractJavaFields("*arg", "*creationUUID", "*vehicleId"))
+        // Update the $$vehicle PState
         .localTransform("$$vehicle",
             Path.key("*vehicleId")
-                // Only performs the write if the current data is null
+                // Only performs the write if a vehicle with this id does not exist
                 .filterPred(Ops.IS_NULL)
                 .multiPath(
                     Path.key("battery").termVal(0),
@@ -180,13 +138,7 @@ public class EVModule implements RamaModule {
         .each(System::currentTimeMillis).out("*timestamp")
         .localTransform("$$vehicleLocationHistory",
             Path.key("*vehicleId", "*timestamp").termVal("*location")
-        )
-        // Update the vehicle location k-d tree
-        .each((GlobalKDTree t, String id, LatLng location) -> {
-          t.insert(id, location);
-          return null;
-        }, "*vehicleLocationTree", "*vehicleId", "*location")
-    ;
+        );
 
     s.source("*ride").out("*arg")
         .subSource("*arg",
@@ -274,19 +226,26 @@ public class EVModule implements RamaModule {
 
     topologies.query("nearestVehicles", "*point").out("*res")
         .allPartition()
-        .each(GlobalKDTree::nearestVehicles, "*vehicleLocationTree", "*point", 50).out("*nearbyVehicles")
-        .each(Ops.EXPLODE, "*nearbyVehicles").out("*nearbyVehicle")
-        .each(NearbyVehicle::getVehicleId, "*nearbyVehicle").out("*vehicleId")
-        .each(NearbyVehicle::getDistance, "*nearbyVehicle").out("*distance")
-        .localSelect("$$vehicleRide", Path.key("*vehicleId")).out("*vehicleRide")
+        // Fetch all vehicles
+        .localSelect("$$vehicle", Path.all()).out("*vehicleEntry")
+        // Get the vehicleId
+        .each(MapEntry::key, "*vehicleEntry").out("*vehicleId")
+        .each(MapEntry::val, "*vehicleEntry").out("*vehicle")
         // Skip if the vehicle is in a ride
+        .localSelect("$$vehicleRide", Path.key("*vehicleId")).out("*vehicleRide")
         .keepTrue(new Expr(Ops.IS_NULL, "*vehicleRide"))
-        .localSelect("$$vehicle", Path.key("*vehicleId")).out("*vehicle")
+        // Get vehicle properties
         .each((Map<String, Object> v) -> v.get("location"), "*vehicle").out("*location")
         .each((Map<String, Object> v) -> v.get("battery"), "*vehicle").out("*battery")
+        // Get the distance between each vehicle and the point
+        .each(LatLng::distanceBetween, "*location", "*point").out("*distance")
+        // Convert the vehicle to a tuple as the aggregator expects tuples
         .each(Ops.TUPLE, "*vehicleId", "*battery", "*location", "*distance").out("*vehicleTuple")
-
         .originPartition()
+
+        // Get the top 50 vehicles across all partitions
+        // Two-phase aggregation automatically occurs here to minimise the amount of data sent from
+        // each partition to the origin partition
         .agg(Agg.topMonotonic(50, "*vehicleTuple")
             .idFunction(Ops.FIRST)
             .sortValFunction(Ops.LAST)
@@ -300,8 +259,6 @@ public class EVModule implements RamaModule {
 
   @Override
   public void define(Setup setup, Topologies topologies) {
-    setup.declareObject("*vehicleLocationTree", new GlobalKDTree());
-
     setup.declareDepot("*vehicleCreate", Depot.hashBy(ExtractVehicleId.class));
     setup.declareDepot("*vehicleUpdate", Depot.hashBy(ExtractVehicleId.class));
     setup.declareDepot("*userRegistration", Depot.hashBy(ExtractUserEmail.class));
