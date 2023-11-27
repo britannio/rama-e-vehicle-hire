@@ -27,6 +27,18 @@ public class EVModule implements RamaModule {
     }
   }
 
+  public static Block extractMapValues(Object from, String... fieldVars) {
+    Block.Impl ret = Block.create();
+    for (String f : fieldVars) {
+      String name;
+      if (Helpers.isGeneratedVar(f)) name = Helpers.getGeneratedVarPrefix(f);
+      else name = f.substring(1);
+      ret = ret.each(Ops.GET, from, name).out(f);
+    }
+    return ret;
+  }
+
+
   private static void declareTopology(Topologies topologies) {
     StreamTopology s = topologies.stream("stream");
     s.pstate("$$user",
@@ -147,11 +159,10 @@ public class EVModule implements RamaModule {
                 // Stop if the vehicle does not exist
                 .localSelect("$$vehicle", Path.key("*vehicleId")).out("*vehicle")
                 .keepTrue(new Expr(Ops.IS_NOT_NULL, "*vehicle"))
+                .macro(extractMapValues("*vehicle", "*battery", "*location"))
                 // Stop if the battery is below 10%
-                .each((Map<String, Object> v) -> v.get("battery"), "*vehicle").out("*battery")
                 .keepTrue(new Expr(Ops.GREATER_THAN_OR_EQUAL, "*battery", 10))
                 // Stop if the user is over 25m away from the vehicle
-                .each((Map<String, Object> v) -> v.get("location"), "*vehicle").out("*location")
                 .each(LatLng::distanceBetween, "*location", "*userLocation").out("*distance")
                 .keepTrue(new Expr(Ops.LESS_THAN_OR_EQUAL, "*distance", 25))
                 // Stop if the vehicle is in a ride
@@ -182,10 +193,7 @@ public class EVModule implements RamaModule {
                 .localSelect("$$vehicleRide", Path.key("*vehicleId")).out("*vehicleRide")
                 // Stop if the vehicle is not in a ride
                 .keepTrue(new Expr(Ops.IS_NOT_NULL, "*vehicleRide"))
-                .each((Map<String, Object> v) -> v.get("riderId"), "*vehicleRide").out("*riderId")
-                .each((Map<String, Object> v) -> v.get("rideId"), "*vehicleRide").out("*rideId")
-                .each((Map<String, Object> v) -> v.get("startLocation"), "*vehicleRide").out("*startLocation")
-                .each((Map<String, Object> v) -> v.get("startTimestamp"), "*vehicleRide").out("*startTimestamp")
+                .macro(extractMapValues("*vehicleRide", "*riderId", "*rideId", "*startLocation", "*startTimestamp"))
                 // Stop if the rider is not the user
                 .keepTrue(new Expr(Ops.EQUAL, "*riderId", "*userId"))
                 // Wipe the vehicle ride
@@ -235,8 +243,7 @@ public class EVModule implements RamaModule {
         .localSelect("$$vehicleRide", Path.key("*vehicleId")).out("*vehicleRide")
         .keepTrue(new Expr(Ops.IS_NULL, "*vehicleRide"))
         // Get vehicle properties
-        .each((Map<String, Object> v) -> v.get("location"), "*vehicle").out("*location")
-        .each((Map<String, Object> v) -> v.get("battery"), "*vehicle").out("*battery")
+        .macro(extractMapValues("*vehicle", "*location", "*battery"))
         // Get the distance between each vehicle and the point
         .each(LatLng::distanceBetween, "*location", "*point").out("*distance")
         // Convert the vehicle to a tuple as the aggregator expects tuples
