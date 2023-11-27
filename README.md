@@ -9,14 +9,11 @@ The project is a back-end for a hypothetical e-vehicle platform whereby riders c
 By virtue of using Rama, the back-end is horizontally scalable from the get-go and some of the more complex cross-task logic is tested with multiple threads to demonstrate this.
 
 
-Global Objects:
-- vehicleLocationTree: Stores a `GlobalKDTree` on each task ('partition'). The KDTree tracks the location of vehicles. Querying across all KDTrees is done to gather the nearest 50 vehicles.
-
 Depots:
-- vehicleCreate: Create a new vehicle
-- vehicleUpdate: Update the location and battery of a vehicle
-- userRegistration: Create a new user
-- ride: Begin/end a ride
+- ride: Begin/end a ride.
+- vehicleCreate: Create a new vehicle.
+- vehicleUpdate: Update the location and battery of a vehicle.
+- userRegistration: Create a new user.
 
 
 PStates:
